@@ -846,21 +846,6 @@
     }
   };
 
-  // ── Check if user is in California via IP geolocation ────────────
-  function checkIfCalifornia(callback) {
-    // Use ipapi.co — free, no API key, 1000 req/day limit
-    fetch('https://ipapi.co/json/')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var isCA = (data.country_code === 'US' && data.region_code === 'CA');
-        callback(isCA);
-      })
-      .catch(function() {
-        // If geo lookup fails, default to showing banner (safe fallback)
-        callback(true);
-      });
-  }
-
   function init() {
     // GPC auto-reject (no banner needed)
     if (gpcEnabled()) {
@@ -880,19 +865,8 @@
       return;
     }
 
-    // No prior consent — show banner immediately, then check geo
-    // Show first (safe default) — hide only if confirmed non-CA
-    var banner = document.getElementById('cookie-banner');
-    banner.style.display = 'flex';
-
-    checkIfCalifornia(function(isCA) {
-      if (!isCA) {
-        // Confirmed non-CA — hide banner and load tracking silently
-        banner.style.display = 'none';
-        loadTrackingScripts();
-      }
-      // CA visitor or geo lookup failed — banner stays visible
-    });
+    // No prior consent — show banner to all visitors
+    document.getElementById('cookie-banner').style.display = 'flex';
   }
 
   if (document.readyState === 'loading') {

@@ -880,16 +880,18 @@
       return;
     }
 
-    // No prior consent — check if CA visitor before showing banner
+    // No prior consent — show banner immediately, then check geo
+    // Show first (safe default) — hide only if confirmed non-CA
+    var banner = document.getElementById('cookie-banner');
+    banner.style.display = 'flex';
+
     checkIfCalifornia(function(isCA) {
-      if (isCA) {
-        // CA visitor — show the consent banner
-        var banner = document.getElementById('cookie-banner');
-        banner.style.display = 'flex';
-      } else {
-        // Non-CA visitor — load tracking silently, no banner
+      if (!isCA) {
+        // Confirmed non-CA — hide banner and load tracking silently
+        banner.style.display = 'none';
         loadTrackingScripts();
       }
+      // CA visitor or geo lookup failed — banner stays visible
     });
   }
 

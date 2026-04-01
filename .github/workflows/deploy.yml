@@ -17,5 +17,5 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             cd /opt/apps/usdebtsupport
-            git pull origin main || git clone git@github.com:fiveonredllc/usdebtsupport.git .
+            git pull origin main || git clone github-usdebt:fiveonredllc/usdebtsupport.git .
             docker compose up -d --build

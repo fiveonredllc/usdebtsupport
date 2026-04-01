@@ -1,0 +1,9 @@
+services:
+  web:
+    build: .
+    container_name: usdebtsupport
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002

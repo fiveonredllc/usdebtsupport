@@ -7,3 +7,7 @@ services:
       - "3002:3002"
     environment:
       - PORT=3002
+      - LEAD_API_SECRET=${LEAD_API_SECRET:-}
+      - SHEET_SHARED_SECRET=${SHEET_SHARED_SECRET:-}
+      - GOOGLE_APPS_SCRIPT_URL=${GOOGLE_APPS_SCRIPT_URL:-}
+      - PUBLIC_LEAD_WEBHOOK_URL=${PUBLIC_LEAD_WEBHOOK_URL:-/api/leads}

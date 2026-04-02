@@ -11,11 +11,22 @@ jobs:
         run: mkdir -p ~/.ssh && ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
       - name: Deploy to Vultr
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GOOGLE_APPS_SCRIPT_URL: ${{ secrets.GOOGLE_APPS_SCRIPT_URL }}
+          LEAD_API_SECRET: ${{ secrets.LEAD_API_SECRET }}
+          SHEET_SHARED_SECRET: ${{ secrets.SHEET_SHARED_SECRET }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: GOOGLE_APPS_SCRIPT_URL,LEAD_API_SECRET,SHEET_SHARED_SECRET
           script: |
             cd /opt/apps/usdebtsupport
             git pull origin main || git clone github-usdebt:fiveonredllc/usdebtsupport.git .
+            touch .env
+            sed -i '/^GOOGLE_APPS_SCRIPT_URL=/d;/^LEAD_API_SECRET=/d;/^SHEET_SHARED_SECRET=/d' .env
+            printf 'GOOGLE_APPS_SCRIPT_URL=%s\n' "$GOOGLE_APPS_SCRIPT_URL" >> .env
+            printf 'LEAD_API_SECRET=%s\n' "$LEAD_API_SECRET" >> .env
+            printf 'SHEET_SHARED_SECRET=%s\n' "$SHEET_SHARED_SECRET" >> .env
+            export GOOGLE_APPS_SCRIPT_URL LEAD_API_SECRET SHEET_SHARED_SECRET
             docker compose up -d --build

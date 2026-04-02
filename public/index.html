@@ -613,9 +613,9 @@
       consent_timestamp: submitTime,
       submission_time:   submitTime,
 
-      // ── TCPA consent confirmation
+      // ── TCPA consent confirmation (matches step-2 disclosure; brand from CONFIG)
       tcpa_consent: 'true',
-      tcpa_language: 'Express written consent provided at time of form submission'
+      tcpa_language: `By submitting this form, I am providing express written consent to being contacted by you, ${CONFIG.BRAND}, or by one or more agents or brokers of your partners which companies I agree may reach me to discuss my interest, including offers of debt relief, at the phone number and/or email address I have provided to you in submitting this form and/or additional information obtained. I consent by electronic signature to being contacted by telephone (via call and/or text) for marketing/telemarketing purposes at the phone number I provided in this form, even if my phone number is listed on a Do Not Call Registry, and I agree that such contact may be made using an automatic telephone dialing system and/or an artificial or prerecorded voice (standard call, text message, and data rates apply). I can revoke my consent at any time. I also understand that my agreement to be contacted is not a condition of purchasing any property, goods or services. By clicking and submitting this form, I affirm that I have read and agree to this website's Privacy Policy and Terms of Use, including the arbitration provision and the E-SIGN Consent.`
     };
 
     // ── Show success immediately (don't make user wait on network)

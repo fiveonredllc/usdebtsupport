@@ -635,14 +635,42 @@
   }
 
   async function prefetchGeoState() {
+    const sel = document.getElementById('state');
+    if (!sel) return;
+
+    // 1) Resolve public IP client-side
     try {
-      const r = await fetch('/api/client-geo');
+      const ipResp = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+      const ipJson = await ipResp.json();
+      if (ipJson && typeof ipJson.ip === 'string' && ipJson.ip.trim()) {
+        detectedIp = ipJson.ip.trim();
+      }
+    } catch (e) { /* ignore */ }
+
+    // 2) Resolve state from IP via free geolocation API
+    if (detectedIp) {
+      try {
+        const geoResp = await fetch('https://ipapi.co/' + encodeURIComponent(detectedIp) + '/json/', { cache: 'no-store' });
+        const geoJson = await geoResp.json();
+        const regionCode = geoJson && typeof geoJson.region_code === 'string'
+          ? geoJson.region_code.trim().toUpperCase()
+          : '';
+        if (regionCode && Array.prototype.some.call(sel.options, function (o) { return o.value === regionCode; })) {
+          sel.value = regionCode;
+          return;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    // 3) Fallback to server-side geo endpoint if needed
+    try {
+      const r = await fetch('/api/client-geo', { cache: 'no-store' });
       const j = await r.json();
-      if (j && j.ip) detectedIp = j.ip;
+      if ((!detectedIp) && j && j.ip) detectedIp = j.ip;
       if (j && j.regionCode) {
-        const sel = document.getElementById('state');
-        if (sel && Array.prototype.some.call(sel.options, function (o) { return o.value === j.regionCode; })) {
-          sel.value = j.regionCode;
+        const regionCode = String(j.regionCode).trim().toUpperCase();
+        if (Array.prototype.some.call(sel.options, function (o) { return o.value === regionCode; })) {
+          sel.value = regionCode;
         }
       }
     } catch (e) { /* ignore */ }

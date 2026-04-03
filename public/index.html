@@ -543,8 +543,6 @@
 
   // Run branding immediately
   applyBranding();
-  populateStateSelect();
-  prefetchGeoState();
 
   // ── UTM & URL helpers ──────────────────────────────────────────
   function getUTMs() {
@@ -615,6 +613,8 @@
   // ── State ──────────────────────────────────────────────────────
   let debtAmount = '';
   const pageLoadTime = now(); // capture when user first landed
+  populateStateSelect();
+  prefetchGeoState();
 
   // ── Step navigation ────────────────────────────────────────────
   function selectDebt(val) {

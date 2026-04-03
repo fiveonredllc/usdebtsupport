@@ -10,7 +10,7 @@ const jsonParser = express.json({ limit: "256kb", type: "application/json" });
 
 /** Must match onclick strings in public/index.html (en-dash in middle option). */
 const DEBT_MAP = {
-  "Under $10,000": null,
+  "Under $10,000": 9500,
   "$10,000 – $20,000": 15000,
   "More than $20,000": 30000,
 };

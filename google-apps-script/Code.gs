@@ -27,7 +27,7 @@ function doPost(e) {
     data.last_name || '',
     data.email || '',
     data.phone || '',
-    data.debt_amount || '',
+    data.debt_amount !== undefined && data.debt_amount !== null ? data.debt_amount : '',
     data.brand || '',
     data.source_domain || '',
     data.landing_page_url || '',
@@ -50,7 +50,16 @@ function doPost(e) {
     data.sub2 || '',
     data.sub3 || '',
     data.sub4 || '',
-    data.sub54 || ''
+    data.sub5 || '',
+    data.state || '',
+    data.ip || '',
+    data.unique_id || '',
+    data.trusted_form_cert || '',
+    data.true_debt_amount !== undefined && data.true_debt_amount !== null ? data.true_debt_amount : '',
+    data.debt_amount_raw || '',
+    data.turbodebt_status || '',
+    data.turbodebt_redirect_url || '',
+    data.turbodebt_message || ''
   ];
 
   SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Leads').appendRow(row);

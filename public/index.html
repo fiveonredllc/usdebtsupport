@@ -211,6 +211,30 @@
       box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
     }
     .field input.err { border-color: #e05252; background: #fff8f8; }
+    .field select {
+      width: 100%;
+      padding: 14px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.94rem;
+      color: var(--text);
+      background: #fafbff;
+      outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+      cursor: pointer;
+    }
+    .field select:focus {
+      border-color: var(--border-focus);
+      background: var(--white);
+      box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
+    }
+    .field select.err { border-color: #e05252; background: #fff8f8; }
+    .btn-submit:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
     .err-msg {
       font-size: 0.72rem;
       color: #e05252;
@@ -294,6 +318,12 @@
       color: var(--text-mid);
       line-height: 1.75;
       font-weight: 400;
+    }
+    .success-screen .success-redirect-note {
+      margin-top: 14px;
+      font-size: 0.85rem;
+      color: var(--primary);
+      font-weight: 600;
     }
 
     /* ── FOOTER NOTE ── */
@@ -390,9 +420,17 @@
           <input type="tel" id="phone" placeholder="Phone Number" autocomplete="tel">
           <div class="err-msg" id="err-phone">Please enter a valid phone number.</div>
         </div>
+        <div class="field">
+          <select id="state" aria-label="State">
+            <option value="">Select your state</option>
+          </select>
+          <div class="err-msg" id="err-state">Please select your state.</div>
+        </div>
       </div>
 
-      <button class="btn-submit" onclick="submitForm()">See If You Qualify →</button>
+      <div class="err-msg" id="err-api" style="text-align:center;margin-top:4px;">We couldn't submit your request. Please try again.</div>
+
+      <button type="button" class="btn-submit" id="submit-lead-btn" onclick="submitForm()"><span id="submit-lead-label">See If You Qualify →</span></button>
 
       <div class="tcpa">
         By submitting this form, I am providing express written consent to being contacted by you, <strong id="tcpa-brand-name">Marketing Partners</strong>, or by one or more agents or brokers of your partners which companies I agree may reach me to discuss my interest, including offers of debt relief, at the phone number and/or email address I have provided to you in submitting this form and/or additional information obtained. I consent by electronic signature to being contacted by telephone (via call and/or text) for marketing/telemarketing purposes at the phone number I provided in this form, even if my phone number is listed on a Do Not Call Registry, and I agree that such contact may be made using an automatic telephone dialing system and/or an artificial or prerecorded voice (standard call, text message, and data rates apply). I can revoke my consent at any time. I also understand that my agreement to be contacted is not a condition of purchasing any property, goods or services. By clicking and submitting this form, I affirm that I have read and agree to this website's <a href="privacy.html">Privacy Policy</a> and <a href="terms.html">Terms of Use</a>, including the arbitration provision and the <a href="terms.html#esign">E-SIGN Consent</a>.
@@ -421,6 +459,7 @@
     </div>
     <h3>You're all set, <span id="successName"></span>!</h3>
     <p>A specialist will reach out within <strong>24 hours</strong> to walk you through your options — completely free, no strings attached.</p>
+    <p id="success-redirect-note" class="success-redirect-note" style="display:none;">Your information has been submitted. You're being connected with a specialist — you'll be redirected in a few seconds.</p>
   </div>
 </div>
 
@@ -504,6 +543,8 @@
 
   // Run branding immediately
   applyBranding();
+  populateStateSelect();
+  prefetchGeoState();
 
   // ── UTM & URL helpers ──────────────────────────────────────────
   function getUTMs() {
@@ -524,8 +565,41 @@
       sub2:  p.get('sub2')  || '',
       sub3:  p.get('sub3')  || '',
       sub4:  p.get('sub4')  || '',
-      sub54: p.get('sub54') || '',
+      sub5:  p.get('sub5')  || '',
     };
+  }
+
+  let detectedIp = '';
+
+  const US_STATE_CODES = [
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA',
+    'ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK',
+    'OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'
+  ];
+
+  function populateStateSelect() {
+    const sel = document.getElementById('state');
+    if (!sel) return;
+    US_STATE_CODES.forEach(function (code) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function prefetchGeoState() {
+    try {
+      const r = await fetch('/api/client-geo');
+      const j = await r.json();
+      if (j && j.ip) detectedIp = j.ip;
+      if (j && j.regionCode) {
+        const sel = document.getElementById('state');
+        if (sel && Array.prototype.some.call(sel.options, function (o) { return o.value === j.regionCode; })) {
+          sel.value = j.regionCode;
+        }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   function getMAID() {
@@ -563,14 +637,21 @@
     const ln    = document.getElementById('lastName');
     const email = document.getElementById('email');
     const phone = document.getElementById('phone');
+    const state = document.getElementById('state');
+    const errApi = document.getElementById('err-api');
+    const submitBtn = document.getElementById('submit-lead-btn');
+    const submitLabel = document.getElementById('submit-lead-label');
     const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     let valid = true;
+
+    if (errApi) errApi.classList.remove('show');
 
     [
       [fn,    'err-fn',    v => v.trim().length > 0],
       [ln,    'err-ln',    v => v.trim().length > 0],
       [email, 'err-email', v => emailRx.test(v.trim())],
-      [phone, 'err-phone', v => v.replace(/\D/g,'').length >= 10]
+      [phone, 'err-phone', v => v.replace(/\D/g,'').length >= 10],
+      [state, 'err-state', v => v.length === 2]
     ].forEach(([el, errId, test]) => {
       if (!test(el.value)) {
         el.classList.add('err');
@@ -595,6 +676,8 @@
       last_name:         ln.value.trim(),
       email:             email.value.trim(),
       phone:             phone.value.trim(),
+      state:             state.value.trim().toUpperCase(),
+      ip:                detectedIp || '',
 
       // ── Qualification
       debt_amount:       debtAmount,
@@ -617,7 +700,7 @@
       sub2:              subs.sub2,
       sub3:              subs.sub3,
       sub4:              subs.sub4,
-      sub54:             subs.sub54,
+      sub5:              subs.sub5,
 
       // ── Device & browser
       user_agent:        navigator.userAgent,
@@ -637,16 +720,27 @@
       tcpa_language: `By submitting this form, I am providing express written consent to being contacted by you, ${CONFIG.BRAND}, or by one or more agents or brokers of your partners which companies I agree may reach me to discuss my interest, including offers of debt relief, at the phone number and/or email address I have provided to you in submitting this form and/or additional information obtained. I consent by electronic signature to being contacted by telephone (via call and/or text) for marketing/telemarketing purposes at the phone number I provided in this form, even if my phone number is listed on a Do Not Call Registry, and I agree that such contact may be made using an automatic telephone dialing system and/or an artificial or prerecorded voice (standard call, text message, and data rates apply). I can revoke my consent at any time. I also understand that my agreement to be contacted is not a condition of purchasing any property, goods or services. By clicking and submitting this form, I affirm that I have read and agree to this website's Privacy Policy and Terms of Use, including the arbitration provision and the E-SIGN Consent.`
     };
 
-    // ── Show success immediately (don't make user wait on network)
-    document.getElementById('step2').style.display = 'none';
-    document.getElementById('success').classList.add('show');
-    document.getElementById('footer-note').style.display = 'none';
-    document.getElementById('successName').textContent = fn.value.trim();
+    const showSuccess = function (redirectUrl) {
+      document.getElementById('step2').style.display = 'none';
+      document.getElementById('success').classList.add('show');
+      document.getElementById('footer-note').style.display = 'none';
+      document.getElementById('successName').textContent = fn.value.trim();
+      const note = document.getElementById('success-redirect-note');
+      if (redirectUrl && note) {
+        note.style.display = 'block';
+        setTimeout(function () {
+          window.location.href = redirectUrl;
+        }, 3500);
+      } else if (note) {
+        note.style.display = 'none';
+      }
+    };
 
-    // ── Send to backend ───────────────────────────────────────────
     if (CONFIG.WEBHOOK_URL && CONFIG.API_SECRET) {
+      if (submitBtn) submitBtn.disabled = true;
+      if (submitLabel) submitLabel.textContent = 'Submitting…';
       try {
-        await fetch(CONFIG.WEBHOOK_URL, {
+        const resp = await fetch(CONFIG.WEBHOOK_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -654,13 +748,27 @@
           },
           body: JSON.stringify(lead)
         });
+        let data = null;
+        try {
+          data = await resp.json();
+        } catch (e) { /* ignore */ }
+        if (!resp.ok || !data || data.ok !== true) {
+          if (errApi) errApi.classList.add('show');
+          if (submitBtn) submitBtn.disabled = false;
+          if (submitLabel) submitLabel.textContent = 'See If You Qualify →';
+          return;
+        }
+        const redir = typeof data.redirect_url === 'string' && data.redirect_url.length > 0 ? data.redirect_url : null;
+        showSuccess(redir);
       } catch (err) {
-        // Silent fail — user already sees success screen
         console.error('Webhook error:', err);
+        if (errApi) errApi.classList.add('show');
+        if (submitBtn) submitBtn.disabled = false;
+        if (submitLabel) submitLabel.textContent = 'See If You Qualify →';
       }
     } else {
-      // Dev mode — log to console so you can verify the payload
       console.log('── LEAD PAYLOAD (backend not yet configured) ──', lead);
+      showSuccess(null);
     }
   }
 

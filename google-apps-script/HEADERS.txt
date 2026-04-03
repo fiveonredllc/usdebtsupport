@@ -1,4 +1,10 @@
 Row 1 of your Google Sheet (paste into A1, then split to columns or paste each cell):
-received_at_utc	first_name	last_name	email	phone	debt_amount	brand	source_domain	landing_page_url	referrer	utm_source	utm_medium	utm_campaign	utm_content	utm_term	user_agent	screen_resolution	language	maid	page_load_time	consent_timestamp	submission_time	tcpa_consent	tcpa_language	sub1	sub2	sub3	sub4	sub54
+received_at_utc	first_name	last_name	email	phone	debt_amount	brand	source_domain	landing_page_url	state	ip	unique_id	trusted_form_cert	true_debt_amount	debt_amount_raw	turbodebt_status	turbodebt_redirect_url	turbodebt_message	referrer	utm_source	utm_medium	utm_campaign	utm_content	utm_term	user_agent	screen_resolution	language	maid	page_load_time	consent_timestamp	submission_time	tcpa_consent	tcpa_language	sub1	sub2	sub3	sub4	sub5
 
-Column map (after tcpa_language in X): Y=sub1, Z=sub2, AA=sub3, AB=sub4, AC=sub54. Add these five headers if your sheet was created before sub fields.
+Column notes:
+- Keep sub columns as the final fields: sub1, sub2, sub3, sub4, sub5.
+- debt_amount: integer sent to buyer (empty if under $10k bucket).
+- debt_amount_raw: original funnel text (e.g. "$10,000 – $20,000").
+- turbodebt_*: outcome from Acquisition Brands post (skipped if under $10k).
+
+If upgrading an existing sheet, move state/ip/unique_id/trusted_form_cert/true_debt_amount/debt_amount_raw/turbodebt_* to immediately after landing_page_url, keep referrer onward as above, and keep sub1 through sub5 as the last columns.

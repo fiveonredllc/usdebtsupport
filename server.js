@@ -1,10 +1,88 @@
 const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3002;
 
 const jsonParser = express.json({ limit: "256kb", type: "application/json" });
+
+/** Must match onclick strings in public/index.html (en-dash in middle option). */
+const DEBT_MAP = {
+  "Under $10,000": null,
+  "$10,000 – $20,000": 15000,
+  "More than $20,000": 30000,
+};
+
+const TURBO_DEBT_URL = "https://www.acquisitionbrands.com/atc/lead/";
+const TRUSTED_FORM_CERT_PLACEHOLDER =
+  "https://cert.trustedform.com/9a30d657d2baabb4e8edac79e326f6924d1677eb";
+
+function mapDebtAmountToInt(raw) {
+  if (raw == null || typeof raw !== "string") return null;
+  const key = raw.trim();
+  if (Object.prototype.hasOwnProperty.call(DEBT_MAP, key)) {
+    return DEBT_MAP[key];
+  }
+  return null;
+}
+
+function getClientIp(req, body) {
+  const forwarded = req.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0].trim();
+    if (first) return first;
+  }
+  if (body && typeof body.ip === "string" && body.ip.trim()) {
+    return body.ip.trim();
+  }
+  return req.socket.remoteAddress || "";
+}
+
+function digitsOnlyPhone(phone) {
+  if (phone == null) return "";
+  return String(phone).replace(/\D/g, "").slice(0, 10);
+}
+
+function buildTurboDebtFormBody({
+  token,
+  firstname,
+  lastname,
+  email,
+  phone10,
+  debtInt,
+  state,
+  trustedFormUrl,
+  ip,
+  uniqueId,
+  sub1,
+  tcpa,
+  trueDebt,
+  sub3,
+  sub4,
+  sub5,
+}) {
+  const params = new URLSearchParams();
+  params.append("token", token);
+  params.append("firstname", firstname);
+  params.append("lastname", lastname);
+  params.append("email", email);
+  params.append("phone", phone10);
+  params.append("debt_amount", String(debtInt));
+  params.append("state", state);
+  params.append("Trusted Form", trustedFormUrl);
+  params.append("ip", ip);
+  params.append("unique_id", uniqueId);
+  params.append("sub1", sub1);
+  params.append("sub2", "posts");
+  if (tcpa) params.append("TCPA", tcpa);
+  params.append("true_debt_amount", String(trueDebt));
+  if (sub3) params.append("sub3", sub3);
+  if (sub4) params.append("sub4", sub4);
+  if (sub5) params.append("sub5", sub5);
+  return params;
+}
 
 app.get("/api/client-config.js", (req, res) => {
   res.type("application/javascript");
@@ -14,10 +92,38 @@ app.get("/api/client-config.js", (req, res) => {
   res.send(`window.__USDS_LEADS=${JSON.stringify({ apiSecret, webhookUrl })};`);
 });
 
+/** Geo pre-fill for state dropdown (server-side ip-api to avoid browser mixed-content). */
+app.get("/api/client-geo", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const forwarded = req.get("x-forwarded-for");
+  let ip =
+    (forwarded && forwarded.split(",")[0].trim()) ||
+    req.socket.remoteAddress ||
+    "";
+  if (!ip || ip === "::1" || ip === "127.0.0.1" || ip.startsWith("::ffff:127.0.0.1")) {
+    return res.json({ ip: ip || null, regionCode: null });
+  }
+  const ipv4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+  try {
+    const r = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(ipv4)}?fields=status,query,regionCode`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    const j = await r.json();
+    if (j.status === "success" && j.regionCode) {
+      return res.json({ ip: j.query || ipv4, regionCode: j.regionCode });
+    }
+  } catch (e) {
+    console.warn("client-geo error:", e.message);
+  }
+  return res.json({ ip: ipv4, regionCode: null });
+});
+
 app.post("/api/leads", jsonParser, async (req, res) => {
   const expected = process.env.LEAD_API_SECRET;
   const gasUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   const sheetSecret = process.env.SHEET_SHARED_SECRET;
+  const tdToken = process.env.TURBODEBT_PARTNER_TOKEN || "";
 
   if (!expected || !gasUrl || !sheetSecret) {
     return res.status(503).json({ ok: false, error: "server_misconfigured" });
@@ -27,9 +133,99 @@ app.post("/api/leads", jsonParser, async (req, res) => {
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
 
+  const body = req.body && typeof req.body === "object" ? req.body : {};
   const received_at_utc = new Date().toISOString();
+  const unique_id = crypto.randomUUID();
+  const ip = getClientIp(req, body);
+  const trusted_form_cert = TRUSTED_FORM_CERT_PLACEHOLDER;
+
+  const debt_amount_raw = typeof body.debt_amount === "string" ? body.debt_amount.trim() : "";
+  const debtInt = mapDebtAmountToInt(debt_amount_raw);
+
+  /** Same value posted to TurboDebt and stored in the sheet. */
+  const resolvedSub1 =
+    (typeof body.sub1 === "string" && body.sub1.trim()) || "usdebtsupport_web";
+  const phone10 = digitsOnlyPhone(body.phone);
+
+  let turbodebt_status = "skipped";
+  let turbodebt_redirect_url = "";
+  let turbodebt_message = "";
+
+  if (debtInt !== null) {
+    if (!tdToken) {
+      turbodebt_status = "error";
+      turbodebt_message = "missing_partner_token";
+    } else if (!body.state || String(body.state).trim().length !== 2) {
+      turbodebt_status = "error";
+      turbodebt_message = "invalid_state";
+    } else if (phone10.length !== 10) {
+      turbodebt_status = "error";
+      turbodebt_message = "invalid_phone";
+    } else {
+      const formBody = buildTurboDebtFormBody({
+        token: tdToken,
+        firstname: String(body.first_name || "").trim(),
+        lastname: String(body.last_name || "").trim(),
+        email: String(body.email || "").trim(),
+        phone10,
+        debtInt,
+        state: String(body.state).trim().toUpperCase(),
+        trustedFormUrl: trusted_form_cert,
+        ip,
+        uniqueId: unique_id,
+        sub1: resolvedSub1,
+        tcpa: typeof body.tcpa_language === "string" ? body.tcpa_language : "",
+        trueDebt: debtInt,
+        sub3: typeof body.sub3 === "string" ? body.sub3.trim() : "",
+        sub4: typeof body.sub4 === "string" ? body.sub4.trim() : "",
+        sub5: typeof body.sub5 === "string" ? body.sub5.trim() : "",
+      });
+
+      try {
+        const r = await fetch(TURBO_DEBT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: formBody,
+        });
+        const text = await r.text();
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+        if (parsed && typeof parsed.status === "string") {
+          turbodebt_status = parsed.status;
+          if (typeof parsed.redirect_url === "string") {
+            turbodebt_redirect_url = parsed.redirect_url;
+          }
+          if (typeof parsed.message === "string") {
+            turbodebt_message = parsed.message;
+          }
+        } else {
+          turbodebt_status = "error";
+          turbodebt_message = "invalid_response";
+        }
+      } catch (err) {
+        console.error("TurboDebt post error:", err);
+        turbodebt_status = "error";
+        turbodebt_message = "upstream_unreachable";
+      }
+    }
+  }
+
   const forward = {
-    ...req.body,
+    ...body,
+    sub1: resolvedSub1,
+    debt_amount: debtInt !== null ? debtInt : "",
+    debt_amount_raw,
+    true_debt_amount: debtInt !== null ? debtInt : "",
+    unique_id,
+    ip,
+    trusted_form_cert,
+    turbodebt_status,
+    turbodebt_redirect_url,
+    turbodebt_message,
     sheet_shared_secret: sheetSecret,
     received_at_utc,
   };
@@ -54,10 +250,16 @@ app.post("/api/leads", jsonParser, async (req, res) => {
     }
 
     if (parsed && parsed.ok === false) {
-      return res.status(502).json({ ok: false, error: parsed.error || "upstream_rejected" });
+      return res
+        .status(502)
+        .json({ ok: false, error: parsed.error || "upstream_rejected" });
     }
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({
+      ok: true,
+      turbodebt_status,
+      redirect_url: turbodebt_redirect_url || null,
+    });
   } catch (err) {
     console.error("Leads forward error:", err);
     return res.status(502).json({ ok: false, error: "upstream_unreachable" });

@@ -45,7 +45,12 @@ function doPost(e) {
     data.consent_timestamp || '',
     data.submission_time || '',
     data.tcpa_consent || '',
-    data.tcpa_language || ''
+    data.tcpa_language || '',
+    data.sub1 || '',
+    data.sub2 || '',
+    data.sub3 || '',
+    data.sub4 || '',
+    data.sub54 || ''
   ];
 
   SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Leads').appendRow(row);

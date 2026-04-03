@@ -517,6 +517,17 @@
     };
   }
 
+  function getSubParams() {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      sub1:  p.get('sub1')  || '',
+      sub2:  p.get('sub2')  || '',
+      sub3:  p.get('sub3')  || '',
+      sub4:  p.get('sub4')  || '',
+      sub54: p.get('sub54') || '',
+    };
+  }
+
   function getMAID() {
     // Best-effort MAID from common URL params ad networks pass
     const p = new URLSearchParams(window.location.search);
@@ -575,6 +586,7 @@
 
     // ── Build lead payload ────────────────────────────────────────
     const utms = getUTMs();
+    const subs = getSubParams();
     const submitTime = now();
 
     const lead = {
@@ -599,6 +611,13 @@
       utm_campaign:      utms.utm_campaign,
       utm_content:       utms.utm_content,
       utm_term:          utms.utm_term,
+
+      // ── URL sub-IDs (tracking; not form fields)
+      sub1:              subs.sub1,
+      sub2:              subs.sub2,
+      sub3:              subs.sub3,
+      sub4:              subs.sub4,
+      sub54:             subs.sub54,
 
       // ── Device & browser
       user_agent:        navigator.userAgent,

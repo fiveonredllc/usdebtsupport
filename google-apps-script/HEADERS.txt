@@ -1,2 +1,4 @@
 Row 1 of your Google Sheet (paste into A1, then split to columns or paste each cell):
-received_at_utc	first_name	last_name	email	phone	debt_amount	brand	source_domain	landing_page_url	referrer	utm_source	utm_medium	utm_campaign	utm_content	utm_term	user_agent	screen_resolution	language	maid	page_load_time	consent_timestamp	submission_time	tcpa_consent	tcpa_language
+received_at_utc	first_name	last_name	email	phone	debt_amount	brand	source_domain	landing_page_url	referrer	utm_source	utm_medium	utm_campaign	utm_content	utm_term	user_agent	screen_resolution	language	maid	page_load_time	consent_timestamp	submission_time	tcpa_consent	tcpa_language	sub1	sub2	sub3	sub4	sub54
+
+Column map (after tcpa_language in X): Y=sub1, Z=sub2, AA=sub3, AB=sub4, AC=sub54. Add these five headers if your sheet was created before sub fields.

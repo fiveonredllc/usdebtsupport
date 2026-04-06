@@ -16,8 +16,6 @@ const DEBT_MAP = {
 };
 
 const TURBO_DEBT_URL = "https://www.acquisitionbrands.com/atc/lead/";
-const TRUSTED_FORM_CERT_PLACEHOLDER =
-  "https://cert.trustedform.com/9a30d657d2baabb4e8edac79e326f6924d1677eb";
 
 function mapDebtAmountToInt(raw) {
   if (raw == null || typeof raw !== "string") return null;
@@ -137,7 +135,10 @@ app.post("/api/leads", jsonParser, async (req, res) => {
   const received_at_utc = new Date().toISOString();
   const unique_id = crypto.randomUUID();
   const ip = getClientIp(req, body);
-  const trusted_form_cert = TRUSTED_FORM_CERT_PLACEHOLDER;
+  const trusted_form_cert =
+    typeof body.trusted_form_cert === "string"
+      ? body.trusted_form_cert.trim()
+      : "";
 
   const debt_amount_raw = typeof body.debt_amount === "string" ? body.debt_amount.trim() : "";
   const debtInt = mapDebtAmountToInt(debt_amount_raw);

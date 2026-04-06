@@ -348,6 +348,13 @@
 </head>
 <body>
 
+<!-- TrustedForm: must exist in DOM before trustedform.js loads -->
+<form id="trustedform-persistent" style="display: none;" aria-hidden="true">
+  <input type="hidden" name="xxTrustedFormCertUrl" value="" id="xxTrustedFormCertUrl_0" />
+  <input type="hidden" name="xxTrustedFormToken" value="" id="xxTrustedFormToken_0" />
+  <input type="hidden" name="xxTrustedFormPingUrl" value="" id="xxTrustedFormPingUrl_0" />
+</form>
+
 <!-- NAV -->
 <nav>
   <div class="nav-logo">
@@ -754,6 +761,10 @@
       phone:             phone.value.trim(),
       state:             state.value.trim().toUpperCase(),
       ip:                detectedIp || '',
+      trusted_form_cert: (function () {
+        var el = document.querySelector('[name="xxTrustedFormCertUrl"]');
+        return el && el.value ? String(el.value).trim() : '';
+      })(),
 
       // ── Qualification
       debt_amount:       debtAmount,
@@ -1084,5 +1095,25 @@
 <\/script>
 
 <!-- ═══════ END COOKIE CONSENT SNIPPET ═══════ -->
+
+<script type="text/javascript">
+(function() {
+  var field = 'xxTrustedFormCertUrl';
+  var provideReferrer = 'false';
+  var tf = document.createElement('script');
+  tf.type = 'text/javascript';
+  tf.async = true;
+  tf.src = 'https://api.trustedform.com/trustedform.js?provide_referrer=' +
+    encodeURIComponent(provideReferrer) + '&field=' + encodeURIComponent(field) +
+    '&l=' + new Date().getTime() + Math.random();
+  if (document.body) {
+    document.body.appendChild(tf);
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.appendChild(tf);
+    });
+  }
+})();
+</script>
 </body>
 </html>

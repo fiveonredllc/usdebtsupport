@@ -21,6 +21,7 @@ function doPost(e) {
     return jsonResponse({ ok: false, error: 'unauthorized' });
   }
 
+  // Row order must match HEADERS.txt exactly.
   var row = [
     data.received_at_utc || new Date().toISOString(),
     data.first_name || '',
@@ -31,6 +32,15 @@ function doPost(e) {
     data.brand || '',
     data.source_domain || '',
     data.landing_page_url || '',
+    data.state || '',
+    data.ip || '',
+    data.unique_id || '',
+    data.trusted_form_cert || '',
+    data.true_debt_amount !== undefined && data.true_debt_amount !== null ? data.true_debt_amount : '',
+    data.debt_amount_raw || '',
+    data.turbodebt_status || '',
+    data.turbodebt_redirect_url || '',
+    data.turbodebt_message || '',
     data.referrer || '',
     data.utm_source || '',
     data.utm_medium || '',
@@ -50,16 +60,7 @@ function doPost(e) {
     data.sub2 || '',
     data.sub3 || '',
     data.sub4 || '',
-    data.sub5 || '',
-    data.state || '',
-    data.ip || '',
-    data.unique_id || '',
-    data.trusted_form_cert || '',
-    data.true_debt_amount !== undefined && data.true_debt_amount !== null ? data.true_debt_amount : '',
-    data.debt_amount_raw || '',
-    data.turbodebt_status || '',
-    data.turbodebt_redirect_url || '',
-    data.turbodebt_message || ''
+    data.sub5 || ''
   ];
 
   SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Leads').appendRow(row);

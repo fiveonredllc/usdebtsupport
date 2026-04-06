@@ -3,7 +3,7 @@ received_at_utc	first_name	last_name	email	phone	debt_amount	brand	source_domain
 
 Column notes:
 - Keep sub columns as the final fields: sub1, sub2, sub3, sub4, sub5.
-- debt_amount: integer sent to buyer (empty if under $10k bucket).
+- debt_amount: integer sent to buyer (mapped from funnel selection; may be below $10k if you map that bucket).
 - debt_amount_raw: original funnel text (e.g. "$10,000 – $20,000").
 - turbodebt_*: outcome from Acquisition Brands post (skipped if under $10k).
 

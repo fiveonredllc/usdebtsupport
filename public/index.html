@@ -500,7 +500,7 @@
     API_SECRET:     _L.apiSecret || '',
   };
 
-  /** When `?td_debug=1` or `?td_debug=true`, server returns `turbodebt_debug` (token redacted) for DevTools. */
+  /** When `?td_debug=1` or `?td_debug=true`, server returns `turbodebt_debug` (includes full request body for integration testing). */
   const TD_DEBUG = (function () {
     try {
       const q = new URLSearchParams(window.location.search);

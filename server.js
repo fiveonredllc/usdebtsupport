@@ -82,12 +82,6 @@ function buildTurboDebtFormBody({
   return params;
 }
 
-/** Redact partner token from x-www-form-urlencoded body for debug output. */
-function redactTurboDebtRequestBody(s) {
-  if (s == null) return "";
-  return String(s).replace(/(^|&)token=[^&]*/gi, "$1token=[REDACTED]");
-}
-
 function isTurboDebtDebugEnabled(body) {
   if (!body || typeof body !== "object") return false;
   const v = body.td_debug;
@@ -215,7 +209,8 @@ app.post("/api/leads", jsonParser, async (req, res) => {
       sub5: typeof body.sub5 === "string" ? body.sub5.trim() : "",
     });
 
-    const requestBodyRedacted = redactTurboDebtRequestBody(formBody.toString());
+    // td_debug: full request body (includes token). Redact token again before production.
+    const requestBodyRaw = formBody.toString();
 
     try {
       const r = await fetch(TURBO_DEBT_URL, {
@@ -248,7 +243,7 @@ app.post("/api/leads", jsonParser, async (req, res) => {
           url: TURBO_DEBT_URL,
           method: "POST",
           requestContentType: "application/x-www-form-urlencoded",
-          requestBodyRedacted,
+          requestBody: requestBodyRaw,
           responseStatus: r.status,
           responseBody: text,
           responseJson: parsed,
@@ -266,7 +261,7 @@ app.post("/api/leads", jsonParser, async (req, res) => {
           url: TURBO_DEBT_URL,
           method: "POST",
           requestContentType: "application/x-www-form-urlencoded",
-          requestBodyRedacted,
+          requestBody: requestBodyRaw,
           fetchError: err && err.message ? String(err.message) : String(err),
         };
       }

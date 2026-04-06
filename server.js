@@ -82,6 +82,18 @@ function buildTurboDebtFormBody({
   return params;
 }
 
+/** Redact partner token from x-www-form-urlencoded body for debug output. */
+function redactTurboDebtRequestBody(s) {
+  if (s == null) return "";
+  return String(s).replace(/(^|&)token=[^&]*/gi, "$1token=[REDACTED]");
+}
+
+function isTurboDebtDebugEnabled(body) {
+  if (!body || typeof body !== "object") return false;
+  const v = body.td_debug;
+  return v === true || v === 1 || v === "1" || v === "true";
+}
+
 app.get("/api/client-config.js", (req, res) => {
   res.type("application/javascript");
   res.set("Cache-Control", "no-store");
@@ -132,6 +144,10 @@ app.post("/api/leads", jsonParser, async (req, res) => {
   }
 
   const body = req.body && typeof req.body === "object" ? req.body : {};
+  const tdDebug = isTurboDebtDebugEnabled(body);
+  const bodyForForward = { ...body };
+  delete bodyForForward.td_debug;
+
   const received_at_utc = new Date().toISOString();
   const unique_id = crypto.randomUUID();
   const ip = getClientIp(req, body);
@@ -151,72 +167,114 @@ app.post("/api/leads", jsonParser, async (req, res) => {
   let turbodebt_status = "skipped";
   let turbodebt_redirect_url = "";
   let turbodebt_message = "";
+  let turbodebtDebug = null;
 
-  if (debtInt !== null) {
-    if (!tdToken) {
-      turbodebt_status = "error";
-      turbodebt_message = "missing_partner_token";
-    } else if (!body.state || String(body.state).trim().length !== 2) {
-      turbodebt_status = "error";
-      turbodebt_message = "invalid_state";
-    } else if (phone10.length !== 10) {
-      turbodebt_status = "error";
-      turbodebt_message = "invalid_phone";
-    } else {
-      const formBody = buildTurboDebtFormBody({
-        token: tdToken,
-        firstname: String(body.first_name || "").trim(),
-        lastname: String(body.last_name || "").trim(),
-        email: String(body.email || "").trim(),
-        phone10,
-        debtInt,
-        state: String(body.state).trim().toUpperCase(),
-        trustedFormUrl: trusted_form_cert,
-        ip,
-        uniqueId: unique_id,
-        sub1: resolvedSub1,
-        tcpa: typeof body.tcpa_language === "string" ? body.tcpa_language : "",
-        trueDebt: debtInt,
-        sub3: typeof body.sub3 === "string" ? body.sub3.trim() : "",
-        sub4: typeof body.sub4 === "string" ? body.sub4.trim() : "",
-        sub5: typeof body.sub5 === "string" ? body.sub5.trim() : "",
+  if (debtInt === null) {
+    if (tdDebug) {
+      turbodebtDebug = {
+        phase: "skipped",
+        reason: "debt_amount_not_mapped_for_buyer",
+        debt_amount_raw,
+      };
+    }
+  } else if (!tdToken) {
+    turbodebt_status = "error";
+    turbodebt_message = "missing_partner_token";
+    if (tdDebug) {
+      turbodebtDebug = { phase: "not_called", reason: "missing_partner_token" };
+    }
+  } else if (!body.state || String(body.state).trim().length !== 2) {
+    turbodebt_status = "error";
+    turbodebt_message = "invalid_state";
+    if (tdDebug) {
+      turbodebtDebug = { phase: "not_called", reason: "invalid_state" };
+    }
+  } else if (phone10.length !== 10) {
+    turbodebt_status = "error";
+    turbodebt_message = "invalid_phone";
+    if (tdDebug) {
+      turbodebtDebug = { phase: "not_called", reason: "invalid_phone" };
+    }
+  } else {
+    const formBody = buildTurboDebtFormBody({
+      token: tdToken,
+      firstname: String(body.first_name || "").trim(),
+      lastname: String(body.last_name || "").trim(),
+      email: String(body.email || "").trim(),
+      phone10,
+      debtInt,
+      state: String(body.state).trim().toUpperCase(),
+      trustedFormUrl: trusted_form_cert,
+      ip,
+      uniqueId: unique_id,
+      sub1: resolvedSub1,
+      tcpa: typeof body.tcpa_language === "string" ? body.tcpa_language : "",
+      trueDebt: debtInt,
+      sub3: typeof body.sub3 === "string" ? body.sub3.trim() : "",
+      sub4: typeof body.sub4 === "string" ? body.sub4.trim() : "",
+      sub5: typeof body.sub5 === "string" ? body.sub5.trim() : "",
+    });
+
+    const requestBodyRedacted = redactTurboDebtRequestBody(formBody.toString());
+
+    try {
+      const r = await fetch(TURBO_DEBT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formBody,
       });
-
+      const text = await r.text();
+      let parsed = null;
       try {
-        const r = await fetch(TURBO_DEBT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: formBody,
-        });
-        const text = await r.text();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = null;
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+      if (parsed && typeof parsed.status === "string") {
+        turbodebt_status = parsed.status;
+        if (typeof parsed.redirect_url === "string") {
+          turbodebt_redirect_url = parsed.redirect_url;
         }
-        if (parsed && typeof parsed.status === "string") {
-          turbodebt_status = parsed.status;
-          if (typeof parsed.redirect_url === "string") {
-            turbodebt_redirect_url = parsed.redirect_url;
-          }
-          if (typeof parsed.message === "string") {
-            turbodebt_message = parsed.message;
-          }
-        } else {
-          turbodebt_status = "error";
-          turbodebt_message = "invalid_response";
+        if (typeof parsed.message === "string") {
+          turbodebt_message = parsed.message;
         }
-      } catch (err) {
-        console.error("TurboDebt post error:", err);
+      } else {
         turbodebt_status = "error";
-        turbodebt_message = "upstream_unreachable";
+        turbodebt_message = "invalid_response";
+      }
+      if (tdDebug) {
+        turbodebtDebug = {
+          phase: "called",
+          url: TURBO_DEBT_URL,
+          method: "POST",
+          requestContentType: "application/x-www-form-urlencoded",
+          requestBodyRedacted,
+          responseStatus: r.status,
+          responseBody: text,
+          responseJson: parsed,
+          turbodebt_status,
+          turbodebt_message,
+        };
+      }
+    } catch (err) {
+      console.error("TurboDebt post error:", err);
+      turbodebt_status = "error";
+      turbodebt_message = "upstream_unreachable";
+      if (tdDebug) {
+        turbodebtDebug = {
+          phase: "fetch_failed",
+          url: TURBO_DEBT_URL,
+          method: "POST",
+          requestContentType: "application/x-www-form-urlencoded",
+          requestBodyRedacted,
+          fetchError: err && err.message ? String(err.message) : String(err),
+        };
       }
     }
   }
 
   const forward = {
-    ...body,
+    ...bodyForForward,
     sub1: resolvedSub1,
     debt_amount: debtInt !== null ? debtInt : "",
     debt_amount_raw,
@@ -247,23 +305,34 @@ app.post("/api/leads", jsonParser, async (req, res) => {
     }
 
     if (!r.ok) {
-      return res.status(502).json({ ok: false, error: "upstream_error" });
+      return res.status(502).json({
+        ok: false,
+        error: "upstream_error",
+        ...(tdDebug && turbodebtDebug ? { turbodebt_debug: turbodebtDebug } : {}),
+      });
     }
 
     if (parsed && parsed.ok === false) {
-      return res
-        .status(502)
-        .json({ ok: false, error: parsed.error || "upstream_rejected" });
+      return res.status(502).json({
+        ok: false,
+        error: parsed.error || "upstream_rejected",
+        ...(tdDebug && turbodebtDebug ? { turbodebt_debug: turbodebtDebug } : {}),
+      });
     }
 
     return res.status(200).json({
       ok: true,
       turbodebt_status,
       redirect_url: turbodebt_redirect_url || null,
+      ...(tdDebug && turbodebtDebug ? { turbodebt_debug: turbodebtDebug } : {}),
     });
   } catch (err) {
     console.error("Leads forward error:", err);
-    return res.status(502).json({ ok: false, error: "upstream_unreachable" });
+    return res.status(502).json({
+      ok: false,
+      error: "upstream_unreachable",
+      ...(tdDebug && turbodebtDebug ? { turbodebt_debug: turbodebtDebug } : {}),
+    });
   }
 });
 

@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 const crypto = require("crypto");
+const { IP2Location } = require("ip2location-nodejs");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -16,6 +17,85 @@ const DEBT_MAP = {
 };
 
 const TURBO_DEBT_URL = "https://www.acquisitionbrands.com/atc/lead/";
+
+/** Full state/province name (IP2Location `region`) -> 2-letter code for US only. */
+const US_STATE_NAME_TO_CODE = {};
+[
+  ["Alabama", "AL"],
+  ["Alaska", "AK"],
+  ["Arizona", "AZ"],
+  ["Arkansas", "AR"],
+  ["California", "CA"],
+  ["Colorado", "CO"],
+  ["Connecticut", "CT"],
+  ["Delaware", "DE"],
+  ["Florida", "FL"],
+  ["Georgia", "GA"],
+  ["Hawaii", "HI"],
+  ["Idaho", "ID"],
+  ["Illinois", "IL"],
+  ["Indiana", "IN"],
+  ["Iowa", "IA"],
+  ["Kansas", "KS"],
+  ["Kentucky", "KY"],
+  ["Louisiana", "LA"],
+  ["Maine", "ME"],
+  ["Maryland", "MD"],
+  ["Massachusetts", "MA"],
+  ["Michigan", "MI"],
+  ["Minnesota", "MN"],
+  ["Mississippi", "MS"],
+  ["Missouri", "MO"],
+  ["Montana", "MT"],
+  ["Nebraska", "NE"],
+  ["Nevada", "NV"],
+  ["New Hampshire", "NH"],
+  ["New Jersey", "NJ"],
+  ["New Mexico", "NM"],
+  ["New York", "NY"],
+  ["North Carolina", "NC"],
+  ["North Dakota", "ND"],
+  ["Ohio", "OH"],
+  ["Oklahoma", "OK"],
+  ["Oregon", "OR"],
+  ["Pennsylvania", "PA"],
+  ["Rhode Island", "RI"],
+  ["South Carolina", "SC"],
+  ["South Dakota", "SD"],
+  ["Tennessee", "TN"],
+  ["Texas", "TX"],
+  ["Utah", "UT"],
+  ["Vermont", "VT"],
+  ["Virginia", "VA"],
+  ["Washington", "WA"],
+  ["West Virginia", "WV"],
+  ["Wisconsin", "WI"],
+  ["Wyoming", "WY"],
+  ["District of Columbia", "DC"],
+].forEach(([name, code]) => {
+  US_STATE_NAME_TO_CODE[name.toLowerCase()] = code;
+});
+
+const ip2location = new IP2Location();
+const IP2LOC_DB_PATH = path.join(__dirname, "ip2location", "IP2LOCATION-LITE-DB9.BIN");
+let ip2locationReady = false;
+try {
+  ip2location.open(IP2LOC_DB_PATH);
+  ip2locationReady = true;
+} catch (e) {
+  console.warn("IP2Location BIN not loaded (run scripts/update-ip2location.sh):", e.message);
+}
+
+function isIpv4String(s) {
+  if (typeof s !== "string" || !s) return false;
+  const parts = s.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((p) => {
+    if (!/^\d+$/.test(p)) return false;
+    const n = Number(p);
+    return n >= 0 && n <= 255;
+  });
+}
 
 function mapDebtAmountToInt(raw) {
   if (raw == null || typeof raw !== "string") return null;
@@ -88,6 +168,16 @@ function isTurboDebtDebugEnabled(body) {
   return v === true || v === 1 || v === "1" || v === "true";
 }
 
+/** Server env GEO_DEBUG=1 or request ?geo_debug=1 — logs IP2Location lookups. */
+function isGeoDebugEnabled(req) {
+  const env = process.env.GEO_DEBUG;
+  if (env != null && String(env).trim() !== "" && /^(1|true|yes)$/i.test(String(env).trim())) {
+    return true;
+  }
+  const q = req.query && req.query.geo_debug;
+  return q === "1" || q === "true";
+}
+
 app.get("/api/client-config.js", (req, res) => {
   res.type("application/javascript");
   res.set("Cache-Control", "no-store");
@@ -96,8 +186,8 @@ app.get("/api/client-config.js", (req, res) => {
   res.send(`window.__USDS_LEADS=${JSON.stringify({ apiSecret, webhookUrl })};`);
 });
 
-/** Geo pre-fill for state dropdown (server-side ip-api to avoid browser mixed-content). */
-app.get("/api/client-geo", async (req, res) => {
+/** Geo: IP -> US state code via local IP2Location BIN (see scripts/update-ip2location.sh). */
+app.get("/api/client-geo", (req, res) => {
   res.set("Cache-Control", "no-store");
   const forwarded = req.get("x-forwarded-for");
   let ip =
@@ -108,19 +198,31 @@ app.get("/api/client-geo", async (req, res) => {
     return res.json({ ip: ip || null, regionCode: null });
   }
   const ipv4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip;
-  try {
-    const r = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(ipv4)}?fields=status,query,regionCode`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    const j = await r.json();
-    if (j.status === "success" && j.regionCode) {
-      return res.json({ ip: j.query || ipv4, regionCode: j.regionCode });
-    }
-  } catch (e) {
-    console.warn("client-geo error:", e.message);
+  if (!isIpv4String(ipv4)) {
+    return res.json({ ip: ipv4, regionCode: null });
   }
-  return res.json({ ip: ipv4, regionCode: null });
+  if (!ip2locationReady) {
+    return res.json({ ip: ipv4, regionCode: null });
+  }
+  try {
+    const data = ip2location.getAll(ipv4);
+    if (!data || data.countryShort !== "US" || !data.region || data.region === "-") {
+      return res.json({ ip: ipv4, regionCode: null });
+    }
+    const regionCode =
+      US_STATE_NAME_TO_CODE[String(data.region).trim().toLowerCase()] || null;
+    if (regionCode && isGeoDebugEnabled(req)) {
+      console.log("[client-geo] ip2location", {
+        ip: ipv4,
+        region: String(data.region).trim(),
+        regionCode,
+      });
+    }
+    return res.json({ ip: ipv4, regionCode });
+  } catch (e) {
+    console.warn("client-geo ip2location:", e.message);
+    return res.json({ ip: ipv4, regionCode: null });
+  }
 });
 
 app.post("/api/leads", jsonParser, async (req, res) => {

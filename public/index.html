@@ -427,12 +427,6 @@
           <input type="tel" id="phone" placeholder="Phone Number" autocomplete="tel">
           <div class="err-msg" id="err-phone">Please enter a valid phone number.</div>
         </div>
-        <div class="field">
-          <select id="state" aria-label="State">
-            <option value="">Select your state</option>
-          </select>
-          <div class="err-msg" id="err-state">Please select your state.</div>
-        </div>
       </div>
 
       <div class="err-msg" id="err-api" style="text-align:center;margin-top:4px;">We couldn't submit your request. Please try again.</div>
@@ -505,6 +499,17 @@
     try {
       const q = new URLSearchParams(window.location.search);
       return q.get('td_debug') === '1' || q.get('td_debug') === 'true';
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  /** When `?geo_debug=1` or `?td_debug=1`, `/api/client-geo` tells the server to console.log IP2Location state (server also honors GEO_DEBUG env). */
+  const GEO_DEBUG = (function () {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      return q.get('geo_debug') === '1' || q.get('geo_debug') === 'true'
+        || TD_DEBUG;
     } catch (e) {
       return false;
     }
@@ -640,55 +645,34 @@
     { code: 'DC', name: 'District of Columbia' }
   ];
 
-  function populateStateSelect() {
-    const sel = document.getElementById('state');
-    if (!sel) return;
-    US_STATES.forEach(function (state) {
-      const opt = document.createElement('option');
-      opt.value = state.code;
-      opt.textContent = state.name;
-      sel.appendChild(opt);
-    });
+  const STATE_NAME_MAP = {};
+  US_STATES.forEach(function (s) {
+    STATE_NAME_MAP[s.name.toLowerCase()] = s.code;
+  });
+
+  function resolveStateParam() {
+    var p = new URLSearchParams(window.location.search);
+    var raw = (p.get('state') || '').trim();
+    if (!raw) return '';
+    var upper = raw.toUpperCase();
+    if (upper.length === 2 && US_STATES.some(function (s) { return s.code === upper; })) {
+      return upper;
+    }
+    return STATE_NAME_MAP[raw.toLowerCase()] || '';
+  }
+
+  function isValidStateCode(code) {
+    return !!code && US_STATES.some(function (s) { return s.code === code; });
   }
 
   async function prefetchGeoState() {
-    const sel = document.getElementById('state');
-    if (!sel) return;
-
-    // 1) Resolve public IP client-side
     try {
-      const ipResp = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-      const ipJson = await ipResp.json();
-      if (ipJson && typeof ipJson.ip === 'string' && ipJson.ip.trim()) {
-        detectedIp = ipJson.ip.trim();
-      }
-    } catch (e) { /* ignore */ }
-
-    // 2) Resolve state from IP via free geolocation API
-    if (detectedIp) {
-      try {
-        const geoResp = await fetch('https://ipapi.co/' + encodeURIComponent(detectedIp) + '/json/', { cache: 'no-store' });
-        const geoJson = await geoResp.json();
-        const regionCode = geoJson && typeof geoJson.region_code === 'string'
-          ? geoJson.region_code.trim().toUpperCase()
-          : '';
-        if (regionCode && Array.prototype.some.call(sel.options, function (o) { return o.value === regionCode; })) {
-          sel.value = regionCode;
-          return;
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    // 3) Fallback to server-side geo endpoint if needed
-    try {
-      const r = await fetch('/api/client-geo', { cache: 'no-store' });
+      const geoUrl = '/api/client-geo' + (GEO_DEBUG ? '?geo_debug=1' : '');
+      const r = await fetch(geoUrl, { cache: 'no-store' });
       const j = await r.json();
-      if ((!detectedIp) && j && j.ip) detectedIp = j.ip;
-      if (j && j.regionCode) {
-        const regionCode = String(j.regionCode).trim().toUpperCase();
-        if (Array.prototype.some.call(sel.options, function (o) { return o.value === regionCode; })) {
-          sel.value = regionCode;
-        }
+      if (j && j.ip) detectedIp = String(j.ip).trim();
+      if (j && j.regionCode && isValidStateCode(String(j.regionCode).trim().toUpperCase())) {
+        resolvedState = String(j.regionCode).trim().toUpperCase();
       }
     } catch (e) { /* ignore */ }
   }
@@ -703,11 +687,23 @@
     return new Date().toISOString(); // e.g. 2026-03-17T18:30:00.000Z
   }
 
-  // ── State ──────────────────────────────────────────────────────
+  // ── State (URL ?state= or IP geo fallback; not a form field) ───
   let debtAmount = '';
   const pageLoadTime = now(); // capture when user first landed
-  populateStateSelect();
-  prefetchGeoState();
+  let resolvedState = resolveStateParam();
+  window.__stateResolvedCallbacks = window.__stateResolvedCallbacks || [];
+  if (resolvedState) {
+    window.__resolvedState = resolvedState;
+  } else {
+    prefetchGeoState().then(function () {
+      window.__resolvedState = resolvedState;
+      (window.__stateResolvedCallbacks || []).forEach(function (fn) {
+        try {
+          fn(resolvedState);
+        } catch (e) { /* ignore */ }
+      });
+    });
+  }
 
   // ── Step navigation ────────────────────────────────────────────
   function selectDebt(val) {
@@ -730,7 +726,6 @@
     const ln    = document.getElementById('lastName');
     const email = document.getElementById('email');
     const phone = document.getElementById('phone');
-    const state = document.getElementById('state');
     const errApi = document.getElementById('err-api');
     const submitBtn = document.getElementById('submit-lead-btn');
     const submitLabel = document.getElementById('submit-lead-label');
@@ -743,8 +738,7 @@
       [fn,    'err-fn',    v => v.trim().length > 0],
       [ln,    'err-ln',    v => v.trim().length > 0],
       [email, 'err-email', v => emailRx.test(v.trim())],
-      [phone, 'err-phone', v => v.replace(/\D/g,'').length >= 10],
-      [state, 'err-state', v => v.length === 2]
+      [phone, 'err-phone', v => v.replace(/\D/g,'').length >= 10]
     ].forEach(([el, errId, test]) => {
       if (!test(el.value)) {
         el.classList.add('err');
@@ -769,7 +763,7 @@
       last_name:         ln.value.trim(),
       email:             email.value.trim(),
       phone:             phone.value.trim(),
-      state:             state.value.trim().toUpperCase(),
+      state:             resolvedState,
       ip:                detectedIp || '',
       trusted_form_cert: (function () {
         var el = document.querySelector('[name="xxTrustedFormCertUrl"]');
@@ -1095,8 +1089,21 @@
       return;
     }
 
-    // No prior consent — show banner to all visitors
-    document.getElementById('cookie-banner').style.display = 'flex';
+    // No prior consent — cookie banner only for California (URL ?state= or IP geo)
+    function showBannerIfCA(state) {
+      if (state === 'CA') {
+        document.getElementById('cookie-banner').style.display = 'flex';
+      } else {
+        loadTrackingScripts();
+      }
+    }
+
+    if (window.__resolvedState) {
+      showBannerIfCA(window.__resolvedState);
+    } else {
+      window.__stateResolvedCallbacks = window.__stateResolvedCallbacks || [];
+      window.__stateResolvedCallbacks.push(showBannerIfCA);
+    }
   }
 
   if (document.readyState === 'loading') {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Opt-Out Confirmed — U.S. Debt Support</title>
+  <title>Opt out — U.S. Debt Support</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -162,6 +162,55 @@
     }
     .btn-back:hover { opacity: 0.88; }
 
+    /* ── INTRO (deliberate opt-out) ── */
+    .intro-icon-wrap {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: rgba(26, 50, 112, 0.08);
+      border: 2px solid rgba(26, 50, 112, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      color: var(--navy);
+    }
+    .intro-icon-wrap svg { display: block; }
+    .intro-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 4px;
+    }
+    .btn-confirm-optout {
+      display: inline-block;
+      width: 100%;
+      max-width: 300px;
+      background: var(--navy);
+      color: var(--white);
+      font-family: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-confirm-optout:hover:not(:disabled) { opacity: 0.92; }
+    .btn-confirm-optout:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-confirm-optout:focus-visible {
+      outline: 2px solid var(--navy);
+      outline-offset: 3px;
+    }
+    .link-cancel {
+      font-size: 0.82rem;
+      color: var(--text-light);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .link-cancel:hover { color: var(--text-mid); text-decoration: underline; }
+
     /* ── FOOTER ── */
     .footer-links {
       margin-top: 28px;
@@ -192,31 +241,47 @@
 </nav>
 
 <div class="card">
-  <div class="check-wrap">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="20 6 9 17 4 12"/>
-    </svg>
+  <div id="optout-intro">
+    <div class="intro-icon-wrap" aria-hidden="true">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    </div>
+    <h1>Do Not Sell or Share My Personal Information</h1>
+    <p class="sub">If you continue, we will save an opt-out preference in this browser (for up to 365 days), remove common advertising cookies, and treat non-essential tracking as declined. Use the button below only if you intend to opt out now.</p>
+    <div class="intro-actions">
+      <button type="button" id="optout-confirm-btn" class="btn-confirm-optout" aria-controls="optout-confirmation" aria-expanded="false">Confirm opt-out</button>
+      <a href="index.html" class="link-cancel">← Back to Home without opting out</a>
+    </div>
   </div>
 
-  <h1>You've been opted out.</h1>
+  <div id="optout-confirmation" hidden>
+    <div class="check-wrap">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
 
-  <p class="sub">Your request to opt out of the sale and sharing of your personal information has been recorded and is effective immediately.</p>
+    <h1 id="optout-success-heading" tabindex="-1">You've been opted out.</h1>
 
-  <div class="confirmation-list">
-    <p>What we've done</p>
-    <ul>
-      <li>Non-essential tracking cookies have been deleted from your browser</li>
-      <li>Advertising and analytics scripts have been blocked for this session</li>
-      <li>Your opt-out preference has been saved for 365 days</li>
-      <li>Your data will not be sold or shared for targeted advertising</li>
-    </ul>
+    <p class="sub">Your request to opt out of the sale and sharing of your personal information has been recorded and is effective immediately.</p>
+
+    <div class="confirmation-list">
+      <p>What we've done</p>
+      <ul>
+        <li>Non-essential tracking cookies have been deleted from your browser</li>
+        <li>Advertising and analytics scripts have been blocked for this session</li>
+        <li>Your opt-out preference has been saved for 365 days</li>
+        <li>Your data will not be sold or shared for targeted advertising</li>
+      </ul>
+    </div>
+
+    <p class="reference">
+      Reference: Opt-out recorded on <span id="opt-out-date"></span>
+    </p>
+
+    <a href="index.html" class="btn-back">← Back to Home</a>
   </div>
-
-  <p class="reference">
-    Reference: Opt-out recorded on <span id="opt-out-date"></span>
-  </p>
-
-  <a href="index.html" class="btn-back">← Back to Home</a>
 
   <div class="footer-links">
     <a href="privacy.html">Privacy Policy</a>
@@ -225,30 +290,53 @@
 </div>
 
 <script>
-  // Show today's date as reference
-  var d = new Date();
-  document.getElementById('opt-out-date').textContent =
-    d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
-    ' at ' +
-    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  (function () {
+    var btn = document.getElementById('optout-confirm-btn');
+    var intro = document.getElementById('optout-intro');
+    var confirmation = document.getElementById('optout-confirmation');
+    var dateEl = document.getElementById('opt-out-date');
+    var heading = document.getElementById('optout-success-heading');
+    var trackingPrefixes = ['_ga','_gid','_gat','_fbp','_fbc','fr','tr'];
 
-  // Enforce opt-out (in case they landed here directly)
-  try {
-    localStorage.setItem('cookie_consent', 'reject');
-    localStorage.setItem('cookie_consent_date', Date.now().toString());
-  } catch(e) {}
+    function applyOptOut() {
+      try {
+        localStorage.setItem('cookie_consent', 'reject');
+        localStorage.setItem('cookie_consent_date', Date.now().toString());
+      } catch (e) {}
 
-  // Delete tracking cookies
-  var trackingPrefixes = ['_ga','_gid','_gat','_fbp','_fbc','fr','tr'];
-  document.cookie.split(';').forEach(function(c) {
-    var name = c.split('=')[0].trim();
-    if (trackingPrefixes.some(function(p){ return name.indexOf(p) === 0; })) {
-      var domain = window.location.hostname;
-      document.cookie = name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain='+domain;
-      document.cookie = name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.'+domain;
-      document.cookie = name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+      document.cookie.split(';').forEach(function (c) {
+        var name = c.split('=')[0].trim();
+        if (trackingPrefixes.some(function (p) { return name.indexOf(p) === 0; })) {
+          var domain = window.location.hostname;
+          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=' + domain;
+          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.' + domain;
+          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+        }
+      });
     }
-  });
+
+    function formatRefDate(d) {
+      return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+        ' at ' +
+        d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    if (!btn || !intro || !confirmation || !dateEl) return;
+
+    btn.addEventListener('click', function () {
+      var d = new Date();
+      applyOptOut();
+      dateEl.textContent = formatRefDate(d);
+      intro.hidden = true;
+      confirmation.hidden = false;
+      btn.disabled = true;
+      btn.setAttribute('aria-expanded', 'true');
+      document.title = 'Opt-Out Confirmed — U.S. Debt Support';
+      if (heading) {
+        try { heading.focus({ preventScroll: false }); } catch (e) { heading.focus(); }
+      }
+    });
+  })();
 </script>
 
 </body>

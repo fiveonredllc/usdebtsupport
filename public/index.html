@@ -995,12 +995,18 @@ My consent is not required as a condition to purchase any goods or services, and
     return navigator.globalPrivacyControl === true;
   }
 
+  function consentDebug() {
+    try {
+      return typeof location !== 'undefined' && /[?&]consent_debug=1(?:&|$)/.test(location.search);
+    } catch (e) { return false; }
+  }
+
   function getConsent() {
     try {
       var val  = localStorage.getItem(CONSENT_KEY);
       var date = localStorage.getItem(CONSENT_DATE);
       if (!val || !date) return null;
-      var age = (Date.now() - parseInt(date)) / (1000 * 60 * 60 * 24);
+      var age = (Date.now() - parseInt(date, 10)) / (1000 * 60 * 60 * 24);
       if (age > EXPIRY_DAYS) {
         localStorage.removeItem(CONSENT_KEY);
         localStorage.removeItem(CONSENT_DATE);
@@ -1010,6 +1016,19 @@ My consent is not required as a condition to purchase any goods or services, and
     } catch(e) { return null; }
   }
 
+  function getConsentState() {
+    var choice = getConsent();
+    var gpc = gpcEnabled();
+    var consentAgeDays = null;
+    try {
+      var date = localStorage.getItem(CONSENT_DATE);
+      if (date) consentAgeDays = (Date.now() - parseInt(date, 10)) / (1000 * 60 * 60 * 24);
+    } catch (e) {}
+    return { choice: choice, gpc: gpc, consentAgeDays: consentAgeDays };
+  }
+
+  window.__USDS_COOKIE_CONSENT = { getState: getConsentState };
+
   function saveConsent(choice) {
     try {
       localStorage.setItem(CONSENT_KEY, choice);
@@ -1017,7 +1036,65 @@ My consent is not required as a condition to purchase any goods or services, and
     } catch(e) {}
   }
 
-  function loadTrackingScripts() {
+  function canLoadPlaceholderTracking() {
+    if (gpcEnabled()) return false;
+    var c = getConsent();
+    if (c === 'reject') return false;
+    if (c === 'accept') return true;
+    if (c === null) {
+      var st = window.__resolvedState;
+      return st != null && st !== '' && st !== 'CA';
+    }
+    return false;
+  }
+
+  function installRejectShims() {
+    window.__usds_shim_mode = 'reject';
+    window.gtag = function() {};
+    window.fbq = function() {};
+    window.ttq = function() {};
+  }
+
+  function installAcceptPlaceholderShims() {
+    var w = window;
+    var prevMode = w.__usds_shim_mode;
+    w.__usds_shim_mode = 'accept_placeholder';
+    w.dataLayer = w.dataLayer || [];
+    w.gtag = function() { w.dataLayer.push(arguments); };
+    if (!w.fbq || prevMode === 'reject') {
+      var fbq = function() {
+        fbq.callMethod ? fbq.callMethod.apply(fbq, arguments) : fbq.queue.push(arguments);
+      };
+      w.fbq = fbq;
+      if (!w._fbq) w._fbq = fbq;
+      fbq.push = fbq;
+      fbq.loaded = true;
+      fbq.version = '2.0';
+      fbq.queue = [];
+    }
+    w.ttq = function() {
+      (w.ttq.q = w.ttq.q || []).push(arguments);
+    };
+  }
+
+  function dispatchConsentChange(choice, source) {
+    try {
+      window.dispatchEvent(new CustomEvent('consentchange', {
+        detail: { choice: choice, source: source || 'unknown' }
+      }));
+    } catch (e) {}
+  }
+
+  function loadTrackingScripts(consentSource) {
+    if (!canLoadPlaceholderTracking()) {
+      if (consentDebug()) {
+        console.log('[CookieConsent] Placeholder tracking skipped (gate). choice=%s resolvedState=%s', getConsent(), window.__resolvedState);
+      }
+      return;
+    }
+
+    installAcceptPlaceholderShims();
+
     // ── Google Analytics 4 ──────────────────────────────────────────
     // (function() {
     //   var s = document.createElement('script');
@@ -1044,13 +1121,18 @@ My consent is not required as a condition to purchase any goods or services, and
     //   fbq('track', 'PageView');
     // })();
 
-    console.log('[CookieConsent] Tracking scripts loaded');
+    console.log('[CookieConsent] Placeholder tracking shims active; vendor scripts disabled in source.');
+    if (consentDebug()) {
+      console.log('[CookieConsent] consent source:', consentSource || 'unknown');
+    }
+    dispatchConsentChange('accept', consentSource || 'unknown');
   }
 
-  function blockTracking() {
+  function blockTracking(consentSource) {
     window._ga_blocked  = true;
     window._fbq_blocked = true;
     window._ttq_blocked = true;
+    installRejectShims();
     var cookies = document.cookie.split(';');
     var trackingPrefixes = ['_ga', '_gid', '_gat', '_fbp', '_fbc', 'fr', 'tr'];
     cookies.forEach(function(c) {
@@ -1063,46 +1145,51 @@ My consent is not required as a condition to purchase any goods or services, and
         document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
       }
     });
-    console.log('[CookieConsent] Non-essential tracking blocked');
+    console.log('[CookieConsent] Reject shims active; non-essential cookies cleared (prefix list).');
+    if (consentDebug()) {
+      console.log('[CookieConsent] consent source:', consentSource || 'unknown');
+    }
+    dispatchConsentChange('reject', consentSource || 'unknown');
   }
 
   window.cookieConsent = function(choice) {
     saveConsent(choice);
     var banner = document.getElementById('cookie-banner');
-    banner.classList.add('hide');
-    setTimeout(function() { banner.style.display = 'none'; }, 320);
+    if (banner) {
+      banner.classList.add('hide');
+      setTimeout(function() { banner.style.display = 'none'; }, 320);
+    }
     if (choice === 'accept') {
-      loadTrackingScripts();
+      loadTrackingScripts('banner');
     } else {
-      blockTracking();
+      blockTracking('banner');
     }
   };
 
   function init() {
-    // GPC auto-reject (no banner needed)
     if (gpcEnabled()) {
       saveConsent('reject');
-      blockTracking();
+      blockTracking('gpc');
       return;
     }
 
     var existing = getConsent();
 
     if (existing === 'accept') {
-      loadTrackingScripts();
+      loadTrackingScripts('stored');
       return;
     }
     if (existing === 'reject') {
-      blockTracking();
+      blockTracking('stored');
       return;
     }
 
-    // No prior consent — cookie banner only for California (URL ?state= or IP geo)
     function showBannerIfCA(state) {
       if (state === 'CA') {
-        document.getElementById('cookie-banner').style.display = 'flex';
+        var b = document.getElementById('cookie-banner');
+        if (b) b.style.display = 'flex';
       } else {
-        loadTrackingScripts();
+        loadTrackingScripts('implicit_non_ca');
       }
     }
 

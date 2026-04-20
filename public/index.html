@@ -279,15 +279,33 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      gap: 18px;
       padding: 14px 32px 20px;
       border-top: 1px solid var(--border);
+      flex-wrap: wrap;
     }
-    .trust-footer-note {
-      font-size: 0.69rem;
+    .trust-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      line-height: 1.2;
       font-weight: 500;
       color: var(--text-light);
-      text-align: center;
-      width: 100%;
+      white-space: nowrap;
+    }
+    .trust-item__icon {
+      width: 1.22em;
+      height: 1.22em;
+      min-width: 14px;
+      min-height: 14px;
+      max-width: 18px;
+      max-height: 18px;
+      flex-shrink: 0;
+      display: block;
+      opacity: 0.52;
+      color: inherit;
+      vertical-align: middle;
     }
 
     /* ── SUCCESS ── */
@@ -339,7 +357,7 @@
     @media (max-width: 480px) {
       .card-body { padding: 24px 20px 20px; }
       .name-row { grid-template-columns: 1fr; }
-      .trust-row { padding: 12px 20px 18px; }
+      .trust-row { padding: 12px 20px 18px; gap: 12px; }
     }
   </style>
   <link rel="icon" type="image/png" href="data:image/png;base64,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"/>
@@ -386,7 +404,14 @@
       </div>
     </div>
     <div class="trust-row">
-      <div class="trust-footer-note">Secure &amp; Confidential &nbsp;·&nbsp; Free to apply</div>
+      <div class="trust-item">
+        <svg class="trust-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Secure &amp; Confidential
+      </div>
+      <div class="trust-item">
+        <svg class="trust-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+        Free to apply
+      </div>
     </div>
   </div>
 
@@ -427,7 +452,14 @@
       </div>
     </div>
     <div class="trust-row">
-      <div class="trust-footer-note">Secure &amp; Confidential &nbsp;·&nbsp; Free to apply</div>
+      <div class="trust-item">
+        <svg class="trust-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Secure &amp; Confidential
+      </div>
+      <div class="trust-item">
+        <svg class="trust-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+        Free to apply
+      </div>
     </div>
   </div>
 

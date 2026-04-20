@@ -9,11 +9,11 @@ const PORT = process.env.PORT || 3002;
 
 const jsonParser = express.json({ limit: "256kb", type: "application/json" });
 
-/** Must match onclick strings in public/index.html (en-dash in middle option). */
+/** Must match onclick strings in public/index.html. */
 const DEBT_MAP = {
-  "Under $10,000": 9500,
-  "$10,000 – $20,000": 15000,
-  "More than $20,000": 30000,
+  "Under $20,000": 10000,
+  "$20,000 - $30,000": 25000,
+  "More than $30,000": 40000,
 };
 
 const TURBO_DEBT_URL = "https://www.acquisitionbrands.com/atc/lead/";
